@@ -10,13 +10,15 @@
   .wrap { max-width:980px; margin:0 auto; padding:28px 24px 64px; }
   h1 { font-size:22px; margin:0 0 4px; }
   .sub { color:#64748b; font-size:13px; margin-bottom:20px; }
-  .perf { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:22px; }
-  @media (max-width:720px){ .perf{grid-template-columns:1fr} }
-  .card { border:1px solid #e5e7eb; border-radius:10px; padding:14px 16px; background:#fafafa; }
+  .perf { display:flex; flex-direction:column; gap:14px; margin-bottom:22px; }
+  .card { border:1px solid #e5e7eb; border-radius:10px; padding:16px 18px; background:#fafafa; width:100%; }
   .card h3 { margin:0 0 8px; font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
-  .stats { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .stats { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
   .stat .k { font-size:11px; color:#94a3b8; }
-  .stat .v { font-size:18px; font-weight:700; margin-top:2px; }
+  .stat .v { font-size:22px; font-weight:700; margin-top:2px; }
+  .rule-row { border:1px solid #e5e7eb; border-radius:8px; padding:12px 14px; margin-top:10px; background:#fff; }
+  .rule-row:first-of-type { margin-top:4px; }
+  .rule-row h4 { margin:0 0 6px; font-size:14px; }
   .pos { color:#16a34a; } .neg { color:#ef4444; }
   .sq { transition:transform .1s, box-shadow .1s; }
   .sq:hover { transform:scale(1.45); box-shadow:0 2px 6px rgba(0,0,0,.2); z-index:10; }
@@ -67,11 +69,6 @@ const MA_STYLE = {
 let DATA = null;
 let activeTrig = null;
 
-function fmt$(v) {
-  if (v == null) return "—";
-  const s = Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: 0 });
-  return (v >= 0 ? "+$" : "-$") + s;
-}
 function fmtPct(v) {
   if (v == null || Number.isNaN(v)) return "—";
   return (v >= 0 ? "+" : "") + (v * 100).toFixed(1) + "%";
@@ -81,38 +78,52 @@ function stakeRoi(pnl, stake) {
   const s = stake || (DATA && DATA.performance && DATA.performance.stake_per_trigger) || 1000;
   return s ? pnl / s : 0;
 }
+function blockRoi(block) {
+  const cap = block.capital_deployed || ((block.n_triggers || 0) * ((DATA && DATA.performance && DATA.performance.stake_per_trigger) || 1000)) || 1;
+  return {
+    realized: block.realized_roi ?? (block.realized_pnl || 0) / cap,
+    unrealized: block.unrealized_roi ?? (block.unrealized_pnl || 0) / cap,
+    total: block.total_roi ?? (block.total_pnl || 0) / cap,
+  };
+}
 function monthAbbr(m) {
   return ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][m-1];
 }
 
 function buildPerf() {
   const o = DATA.performance.overall;
-  const stake = DATA.performance.stake_per_trigger;
+  const or = blockRoi(o);
   let rulesHtml = "";
   for (const [rid, r] of Object.entries(DATA.performance.by_rule)) {
+    const rr = blockRoi(r);
     rulesHtml += `
-      <div class="card">
-        <h3>Rule · ${r.title || rid}</h3>
-        <p class="muted" style="margin:0 0 10px">${r.blurb || ""}</p>
+      <div class="rule-row">
+        <h4>${r.title || rid}</h4>
+        <p class="muted" style="margin:0 0 8px">${r.blurb || ""}</p>
         <div class="stats">
-          <div class="stat"><div class="k">Realized</div><div class="v ${cls(r.realized_pnl)}">${fmt$(r.realized_pnl)}</div></div>
-          <div class="stat"><div class="k">Unrealized</div><div class="v ${cls(r.unrealized_pnl)}">${fmt$(r.unrealized_pnl)}</div></div>
-          <div class="stat"><div class="k">Total · ${r.n_triggers} × $${stake}</div><div class="v ${cls(r.total_pnl)}">${fmt$(r.total_pnl)}</div></div>
+          <div class="stat"><div class="k">Realized</div><div class="v ${cls(rr.realized)}">${fmtPct(rr.realized)}</div></div>
+          <div class="stat"><div class="k">Unrealized</div><div class="v ${cls(rr.unrealized)}">${fmtPct(rr.unrealized)}</div></div>
+          <div class="stat"><div class="k">Total · ${r.n_triggers} triggers</div><div class="v ${cls(rr.total)}">${fmtPct(rr.total)}</div></div>
         </div>
+        <div class="muted" style="margin-top:6px">Closed ${r.n_realized} · Open ${r.n_unrealized}</div>
       </div>`;
   }
   document.getElementById("perf").innerHTML = `
     <div class="card">
       <h3>Overall paper P&amp;L</h3>
-      <p class="muted" style="margin:0 0 10px">Each trigger = $${stake.toLocaleString()} · actively marked daily</p>
+      <p class="muted" style="margin:0 0 10px">All rules · $1k notional per trigger · rates vs capital deployed</p>
       <div class="stats">
-        <div class="stat"><div class="k">Realized gain/loss</div><div class="v ${cls(o.realized_pnl)}">${fmt$(o.realized_pnl)}</div></div>
-        <div class="stat"><div class="k">Unrealized gain/loss</div><div class="v ${cls(o.unrealized_pnl)}">${fmt$(o.unrealized_pnl)}</div></div>
-        <div class="stat"><div class="k">Total · ${o.n_triggers} triggers</div><div class="v ${cls(o.total_pnl)}">${fmt$(o.total_pnl)}</div></div>
+        <div class="stat"><div class="k">Realized gain/loss</div><div class="v ${cls(or.realized)}">${fmtPct(or.realized)}</div></div>
+        <div class="stat"><div class="k">Unrealized gain/loss</div><div class="v ${cls(or.unrealized)}">${fmtPct(or.unrealized)}</div></div>
+        <div class="stat"><div class="k">Total · ${o.n_triggers} triggers</div><div class="v ${cls(or.total)}">${fmtPct(or.total)}</div></div>
       </div>
       <div class="muted" style="margin-top:8px">Closed ${o.n_realized} · Still open ${o.n_unrealized} · Wins ${o.win_n} / Losses ${o.loss_n}</div>
     </div>
-    ${rulesHtml}`;
+    <div class="card">
+      <h3>Rules</h3>
+      <p class="muted" style="margin:0 0 4px">Per-rule realized / unrealized / total %</p>
+      ${rulesHtml || '<p class="muted">No rules yet</p>'}
+    </div>`;
 }
 
 function buildLegend() {
@@ -199,11 +210,11 @@ function showDay(ds) {
           <span class="muted" style="margin-left:auto"></span>
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;font-size:13px">
-          <div>Realized <b class="${cls(rp)}">${fmt$(rp)}</b> <span class="${cls(rr)}">(${fmtPct(rr)})</span></div>
-          <div>Unrealized <b class="${cls(up)}">${fmt$(up)}</b> <span class="${cls(ur)}">(${fmtPct(ur)})</span></div>
-          <div>Total <b class="${cls(t.pnl)}">${fmt$(t.pnl)}</b> <span class="${cls(tr)}">(${fmtPct(tr)})</span></div>
+          <div>Realized <b class="${cls(rr)}">${fmtPct(rr)}</b></div>
+          <div>Unrealized <b class="${cls(ur)}">${fmtPct(ur)}</b></div>
+          <div>Total <b class="${cls(tr)}">${fmtPct(tr)}</b></div>
         </div>
-        <div class="muted" style="margin-top:4px">$${t.stake} paper · ${t.init_sh || t.shares} sh @ $${t.entry} on ${t.entry_date}${t.reason ? " · " + t.reason : ""}</div>
+        <div class="muted" style="margin-top:4px">$1k paper · entry $${t.entry} on ${t.entry_date}${t.reason ? " · " + t.reason : ""}</div>
       </div>`;
   }
 
@@ -235,8 +246,8 @@ function showTicker(id) {
   const ur = t.unrealized_roi ?? stakeRoi(up, t.stake);
   document.getElementById("chart-caption").innerHTML =
     `<b>${t.ticker}</b> · why-buy + ${t.status === "realized" ? "15d after exit" : "active mark"}`
-    + ` · Realized <span class="${cls(rp)}">${fmt$(rp)} (${fmtPct(rr)})</span>`
-    + ` · Unrealized <span class="${cls(up)}">${fmt$(up)} (${fmtPct(ur)})</span>`
+    + ` · Realized <span class="${cls(rr)}">${fmtPct(rr)}</span>`
+    + ` · Unrealized <span class="${cls(ur)}">${fmtPct(ur)}</span>`
     + (t.status === "unrealized" ? ` · mark $${t.mark}` : ` · exited ${t.exit_date || ""}`);
 
   const panel = document.getElementById("chart-panel");
