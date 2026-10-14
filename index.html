@@ -115,6 +115,23 @@ function nl(s) {
   if (!s) return "—";
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g, "<br>");
 }
+function exampleHtml(logic) {
+  if (!logic || !logic.example_image) {
+    return `<div class="logic-block" style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 12px">
+      <div class="lbl">示意图 / Example</div>
+      <div class="txt muted">Missing example sketch — every rule should ship portal/rules/&lt;id&gt;_example.jpg</div>
+    </div>`;
+  }
+  const cap = logic.example_caption
+    ? `<div class="muted" style="margin-top:8px;font-size:12px;line-height:1.45">${nl(logic.example_caption)}</div>`
+    : "";
+  return `<div class="logic-block">
+    <div class="lbl">示意图 / Example（一看就懂）</div>
+    <img src="${logic.example_image}" alt="Rule example"
+      style="width:100%;max-width:860px;border-radius:8px;border:1px solid #e5e7eb;margin-top:6px;background:#fff;display:block"/>
+    ${cap}
+  </div>`;
+}
 function glossaryHtml(glossary) {
   if (!glossary || !glossary.length) return "";
   const items = glossary.map(g =>
@@ -174,7 +191,8 @@ function buildPerf() {
         <div class="muted" style="margin-top:6px">Rolling 12m · ${r.n_triggers} triggers · Closed ${r.n_realized} · Open ${r.n_unrealized}
           ${r.spy_matched!=null ? ` · matched SPY <b class="${cls(r.spy_matched)}">${fmtPct(r.spy_matched)}</b>` : ""}
           ${r.alpha!=null ? ` · alpha <b class="${cls(r.alpha)}">${fmtPct(r.alpha)}</b>` : ""}</div>
-        <div class="rule-logic">
+        <div class="rule-logic" onclick="event.stopPropagation()">
+          ${exampleHtml(logic)}
           ${glossaryHtml(logic.glossary)}
           <div class="logic-block"><div class="lbl">股票池 / Universe</div><div class="txt">${nl(logic.universe)}</div></div>
           <div class="logic-block"><div class="lbl">选股 / Select</div><div class="txt">${nl(logic.select)}</div></div>
