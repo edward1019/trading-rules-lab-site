@@ -94,11 +94,12 @@ function stakeRoi(pnl, stake) {
   return s ? pnl / s : 0;
 }
 function blockRoi(block) {
+  // Prefer scale-free equal-weight hold returns; fall back to $ book only if missing
   const cap = block.capital_deployed || ((block.n_triggers || 0) * ((DATA && DATA.performance && DATA.performance.stake_per_trigger) || 1000)) || 1;
   return {
-    realized: block.realized_roi ?? (block.realized_pnl || 0) / cap,
-    unrealized: block.unrealized_roi ?? (block.unrealized_pnl || 0) / cap,
-    total: block.total_roi ?? (block.total_pnl || 0) / cap,
+    realized: block.realized_roi != null ? block.realized_roi : (block.realized_pnl || 0) / cap,
+    unrealized: block.unrealized_roi != null ? block.unrealized_roi : (block.unrealized_pnl || 0) / cap,
+    total: block.total_roi != null ? block.total_roi : (block.total_pnl || 0) / cap,
   };
 }
 /** Rule's share of overall P&L bucket (0–1+). null if overall bucket ~0. */
@@ -143,11 +144,11 @@ function periodTableHtml(periods) {
   }
   return `<table class="period-table">
     <thead><tr>
-      <th>Window</th><th>Total (to today)</th><th>Realized</th><th>Unrealized</th><th>SPY buy→today</th><th>Alpha</th><th>Triggers</th>
+      <th>Window</th><th>Total</th><th>Realized</th><th>Unrealized</th><th>SPY (same hold)</th><th>Alpha</th><th>Trades</th>
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>
-  <p class="muted" style="margin-top:8px">Apple-to-apple: each ticket starts $1k. <b>SPY</b> = that $1k in SPY from buy → today. <b>Total</b> = stock while held, then sale proceeds stay in SPY until today. New $1k entries each get their own SPY leg from that buy date. Alpha = Total − SPY. Realized/Unrealized stay stock-only marks.</p>`;
+  <p class="muted" style="margin-top:8px">No AUM assumption. Each trade = 1 unit. Stock return entry→exit (or mark if open) vs SPY over the <b>same dates</b>. Metrics = equal-weight average across trades. Alpha = avg(stock − SPY). $1k is only sizing for paper charts, not the return denominator.</p>`;
 }
 
 function buildPerf() {
@@ -191,15 +192,16 @@ function buildPerf() {
   document.getElementById("perf").innerHTML = `
     <div class="card clickable" id="overall-card" onclick="toggleOverall()">
       <h3>Overall paper P&amp;L <span class="muted" style="font-weight:500;text-transform:none;letter-spacing:0">· click for 12m/6m/3m/1m</span></h3>
-      <p class="muted" style="margin:0 0 10px">Rolling 12m (${win.start || "?"} → ${win.end || "?"}) · $1k/ticket · Total grows sale proceeds in SPY to today · SPY bench = $1k buy→today</p>
+      <p class="muted" style="margin:0 0 10px">Rolling 12m (${win.start || "?"} → ${win.end || "?"}) · scale-free: equal-weight per trade vs SPY on the same hold (no $10k/$100k book)</p>
       <div class="stats">
-        <div class="stat"><div class="k">Total gain/loss</div><div class="v ${cls(or.total)}">${fmtPct(or.total)}</div></div>
-        <div class="stat"><div class="k">Realized gain/loss</div><div class="v ${cls(or.realized)}">${fmtPct(or.realized)}</div></div>
-        <div class="stat"><div class="k">Unrealized gain/loss</div><div class="v ${cls(or.unrealized)}">${fmtPct(or.unrealized)}</div></div>
+        <div class="stat"><div class="k">Total gain/loss</div><div class="v ${or.total==null?'':cls(or.total)}">${fmtPct(or.total)}</div></div>
+        <div class="stat"><div class="k">Realized gain/loss</div><div class="v ${or.realized==null?'':cls(or.realized)}">${fmtPct(or.realized)}</div></div>
+        <div class="stat"><div class="k">Unrealized gain/loss</div><div class="v ${or.unrealized==null?'':cls(or.unrealized)}">${fmtPct(or.unrealized)}</div></div>
       </div>
       <div class="muted" style="margin-top:8px">Closed ${o.n_realized} · Still open ${o.n_unrealized} · Wins ${o.win_n} / Losses ${o.loss_n}
-        ${o.spy_matched!=null ? ` · matched SPY <b class="${cls(o.spy_matched)}">${fmtPct(o.spy_matched)}</b>` : ""}
-        ${o.alpha!=null ? ` · alpha <b class="${cls(o.alpha)}">${fmtPct(o.alpha)}</b>` : ""}</div>
+        ${o.spy_matched!=null ? ` · SPY same-hold <b class="${cls(o.spy_matched)}">${fmtPct(o.spy_matched)}</b>` : ""}
+        ${o.alpha!=null ? ` · alpha <b class="${cls(o.alpha)}">${fmtPct(o.alpha)}</b>` : ""}
+        ${o.pct_beat_spy!=null ? ` · beat SPY ${(o.pct_beat_spy*100).toFixed(0)}% of trades` : ""}</div>
       <div class="period-panel">
         ${periodTableHtml(o.periods)}
       </div>
