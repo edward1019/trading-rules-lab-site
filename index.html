@@ -170,7 +170,7 @@ function buildPerf() {
           <div class="stat"><div class="k">Realized gain/loss</div><div class="v ${cls(rr.realized)}">${fmtPct(rr.realized)}${share(sReal)}</div></div>
           <div class="stat"><div class="k">Unrealized gain/loss</div><div class="v ${cls(rr.unrealized)}">${fmtPct(rr.unrealized)}${share(sUnreal)}</div></div>
         </div>
-        <div class="muted" style="margin-top:6px">Rolling 12m · ${r.n_triggers} triggers · Closed ${r.n_realized} · Open ${r.n_unrealized} · (%) = rule return · (of overall) = $ share of overall bucket</div>
+        <div class="muted" style="margin-top:6px">Rolling 12m · ${r.n_triggers} triggers · Closed ${r.n_realized} · Open ${r.n_unrealized}</div>
         <div class="rule-logic">
           ${glossaryHtml(logic.glossary)}
           <div class="logic-block"><div class="lbl">股票池 / Universe</div><div class="txt">${nl(logic.universe)}</div></div>
@@ -189,7 +189,7 @@ function buildPerf() {
   document.getElementById("perf").innerHTML = `
     <div class="card clickable" id="overall-card" onclick="toggleOverall()">
       <h3>Overall paper P&amp;L <span class="muted" style="font-weight:500;text-transform:none;letter-spacing:0">· click for 12m/6m/3m/1m</span></h3>
-      <p class="muted" style="margin:0 0 10px">Rolling 12 months (${win.start || "?"} → ${win.end || "?"}) · ${o.n_triggers} triggers × $1k</p>
+      <p class="muted" style="margin:0 0 10px">Rolling 12 months (${win.start || "?"} → ${win.end || "?"}) · paper model: each trigger = $1k ticket · return = ΣP&amp;L ÷ (${o.n_triggers} × $1k). No idle-cash / SPY-park account — not the $10k backtest book.</p>
       <div class="stats">
         <div class="stat"><div class="k">Total gain/loss</div><div class="v ${cls(or.total)}">${fmtPct(or.total)}</div></div>
         <div class="stat"><div class="k">Realized gain/loss</div><div class="v ${cls(or.realized)}">${fmtPct(or.realized)}</div></div>
@@ -203,7 +203,7 @@ function buildPerf() {
     </div>
     <div class="card">
       <h3>Rules</h3>
-      <p class="muted" style="margin:0 0 4px">Same 3 metrics as Overall · parentheses = this rule’s $ share of overall · click for logic + windows</p>
+      <p class="muted" style="margin:0 0 4px">Same 3 metrics as Overall (rule return %) · parentheses = this rule’s $ as % of overall $ · click for logic + windows</p>
       ${rulesHtml || '<p class="muted">No rules yet</p>'}
     </div>`;
 }
