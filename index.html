@@ -26,6 +26,14 @@
   .logic-block { margin-bottom:10px; }
   .logic-block .lbl { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#15803d; margin-bottom:3px; }
   .logic-block .txt { font-size:13px; color:#334155; line-height:1.55; }
+  .card.clickable { cursor:pointer; }
+  .card.clickable:hover { border-color:#93c5fd; }
+  .card.open { border-color:#2563eb; background:#f8fbff; }
+  .period-panel { display:none; margin-top:14px; padding-top:12px; border-top:1px solid #e2e8f0; }
+  .card.open .period-panel, .rule-row.open .period-panel { display:block; }
+  .period-table { width:100%; border-collapse:collapse; font-size:13px; }
+  .period-table th, .period-table td { text-align:left; padding:6px 8px; border-bottom:1px solid #eef2f7; }
+  .period-table th { color:#64748b; font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.03em; }
   .pos { color:#16a34a; } .neg { color:#ef4444; }
   .sq { transition:transform .1s, box-shadow .1s; }
   .sq:hover { transform:scale(1.45); box-shadow:0 2px 6px rgba(0,0,0,.2); z-index:10; }
@@ -102,6 +110,32 @@ function monthAbbr(m) {
   return ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][m-1];
 }
 
+function periodTableHtml(periods) {
+  if (!periods) return '<p class="muted">No period stats yet</p>';
+  const labels = (DATA.performance.periods || ["12m", "6m", "3m", "1m"]);
+  let rows = "";
+  for (const lab of labels) {
+    const p = periods[lab];
+    if (!p) continue;
+    rows += `<tr>
+      <td><b>${lab}</b><div class="muted">${p.start} → ${p.end}</div></td>
+      <td class="${cls(p.total_roi)}">${fmtPct(p.total_roi)}</td>
+      <td class="${cls(p.realized_roi)}">${fmtPct(p.realized_roi)}</td>
+      <td class="${cls(p.unrealized_roi)}">${fmtPct(p.unrealized_roi)}</td>
+      <td class="${p.spy==null?'':cls(p.spy)}">${p.spy==null?'—':fmtPct(p.spy)}</td>
+      <td class="${p.alpha==null?'':cls(p.alpha)}">${p.alpha==null?'—':fmtPct(p.alpha)}</td>
+      <td class="muted">${p.n_triggers}</td>
+    </tr>`;
+  }
+  return `<table class="period-table">
+    <thead><tr>
+      <th>Window</th><th>Total</th><th>Realized</th><th>Unrealized</th><th>SPY</th><th>Alpha vs SPY</th><th>Triggers</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <p class="muted" style="margin-top:8px">Windows by entry date · alpha = total − SPY over the same dates</p>`;
+}
+
 function buildPerf() {
   const o = DATA.performance.overall;
   const or = blockRoi(o);
@@ -109,43 +143,58 @@ function buildPerf() {
   for (const [rid, r] of Object.entries(DATA.performance.by_rule)) {
     const meta = (DATA.rules && DATA.rules[rid]) || {};
     const logic = r.logic || meta.logic || {};
+    const sTotal = shareOfOverall(r.total_pnl, o.total_pnl);
     const sReal = shareOfOverall(r.realized_pnl, o.realized_pnl);
     const sUnreal = shareOfOverall(r.unrealized_pnl, o.unrealized_pnl);
-    const sTotal = shareOfOverall(r.total_pnl, o.total_pnl);
     rulesHtml += `
       <div class="rule-row" id="rule-${rid}" onclick="toggleRule('${rid}')">
-        <h4>${r.title || rid} <span class="muted" style="font-weight:500">· click for logic</span></h4>
+        <h4>${r.title || rid} <span class="muted" style="font-weight:500">· click for logic + windows</span></h4>
         <div class="stats">
+          <div class="stat"><div class="k">% of overall total</div><div class="v ${sTotal==null?'':cls(sTotal)}">${sTotal==null?'—':fmtPct(sTotal)}</div></div>
           <div class="stat"><div class="k">% of overall realized</div><div class="v ${sReal==null?'':cls(sReal)}">${sReal==null?'—':fmtPct(sReal)}</div></div>
           <div class="stat"><div class="k">% of overall unrealized</div><div class="v ${sUnreal==null?'':cls(sUnreal)}">${sUnreal==null?'—':fmtPct(sUnreal)}</div></div>
-          <div class="stat"><div class="k">% of overall total</div><div class="v ${sTotal==null?'':cls(sTotal)}">${sTotal==null?'—':fmtPct(sTotal)}</div></div>
         </div>
-        <div class="muted" style="margin-top:6px">${r.n_triggers} triggers · Closed ${r.n_realized} · Open ${r.n_unrealized}</div>
+        <div class="muted" style="margin-top:6px">Rolling 12m · ${r.n_triggers} triggers · Closed ${r.n_realized} · Open ${r.n_unrealized}</div>
         <div class="rule-logic">
           <div class="logic-block"><div class="lbl">选股 / Select</div><div class="txt">${logic.select || "—"}</div></div>
           <div class="logic-block"><div class="lbl">买入 / Buy</div><div class="txt">${logic.buy || "—"}</div></div>
           <div class="logic-block"><div class="lbl">止损 / Stop</div><div class="txt">${logic.stop || "—"}</div></div>
           <div class="logic-block"><div class="lbl">止盈 / Take profit</div><div class="txt">${logic.take_profit || "—"}</div></div>
           ${logic.universe ? `<div class="logic-block"><div class="lbl">股票池 / Universe</div><div class="txt">${logic.universe}</div></div>` : ""}
+          <div class="period-panel" style="display:block;border-top:1px solid #dcfce7;margin-top:12px;padding-top:12px">
+            <div class="muted" style="margin-bottom:6px">Rolling windows · vs SPY</div>
+            ${periodTableHtml(r.periods)}
+          </div>
         </div>
       </div>`;
   }
+  const win = DATA.window || {};
   document.getElementById("perf").innerHTML = `
-    <div class="card">
-      <h3>Overall paper P&amp;L</h3>
-      <p class="muted" style="margin:0 0 10px">Return on capital deployed (${o.n_triggers} triggers × $1k). Not “number of triggers.”</p>
+    <div class="card clickable" id="overall-card" onclick="toggleOverall()">
+      <h3>Overall paper P&amp;L <span class="muted" style="font-weight:500;text-transform:none;letter-spacing:0">· click for 12m/6m/3m/1m</span></h3>
+      <p class="muted" style="margin:0 0 10px">Rolling 12 months (${win.start || "?"} → ${win.end || "?"}) · ${o.n_triggers} triggers × $1k</p>
       <div class="stats">
+        <div class="stat"><div class="k">Total gain/loss</div><div class="v ${cls(or.total)}">${fmtPct(or.total)}</div></div>
         <div class="stat"><div class="k">Realized gain/loss</div><div class="v ${cls(or.realized)}">${fmtPct(or.realized)}</div></div>
         <div class="stat"><div class="k">Unrealized gain/loss</div><div class="v ${cls(or.unrealized)}">${fmtPct(or.unrealized)}</div></div>
-        <div class="stat"><div class="k">Total gain/loss</div><div class="v ${cls(or.total)}">${fmtPct(or.total)}</div></div>
       </div>
-      <div class="muted" style="margin-top:8px">Closed ${o.n_realized} · Still open ${o.n_unrealized} · Wins ${o.win_n} / Losses ${o.loss_n}</div>
+      <div class="muted" style="margin-top:8px">Closed ${o.n_realized} · Still open ${o.n_unrealized} · Wins ${o.win_n} / Losses ${o.loss_n}
+        ${o.periods && o.periods["12m"] && o.periods["12m"].alpha!=null ? ` · 12m alpha vs SPY <b class="${cls(o.periods["12m"].alpha)}">${fmtPct(o.periods["12m"].alpha)}</b>` : ""}</div>
+      <div class="period-panel">
+        ${periodTableHtml(o.periods)}
+      </div>
     </div>
     <div class="card">
       <h3>Rules</h3>
-      <p class="muted" style="margin:0 0 4px">Each rule’s share of overall realized / unrealized / total · click for 选股 / 买入 / 止盈止损</p>
+      <p class="muted" style="margin:0 0 4px">Share of rolling-12m overall · click for logic + window metrics / SPY alpha</p>
       ${rulesHtml || '<p class="muted">No rules yet</p>'}
     </div>`;
+}
+
+function toggleOverall() {
+  const el = document.getElementById("overall-card");
+  if (!el) return;
+  el.classList.toggle("open");
 }
 
 function toggleRule(rid) {
@@ -421,8 +470,9 @@ fetch("portal_data.json")
   .then(r => r.json())
   .then(data => {
     DATA = data;
+    const w = data.window || {};
     document.getElementById("sub").textContent =
-      `Paper book · $${data.performance.stake_per_trigger}/trigger · as of ${data.asof || data.window.end} · updated ${data.generated}`;
+      `Rolling 12m · $${data.performance.stake_per_trigger}/trigger · ${w.start || "?"} → ${w.end || data.asof} · updated ${data.generated}`;
     buildPerf();
     buildLegend();
     buildCalendar();
