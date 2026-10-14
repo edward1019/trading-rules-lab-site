@@ -4,6 +4,7 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Trading Rules Lab</title>
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
 <style>
   body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; background:#fff; color:#0f172a; }
   .wrap { max-width:980px; margin:0 auto; padding:28px 24px 64px; }
@@ -17,53 +18,52 @@
   .stat .k { font-size:11px; color:#94a3b8; }
   .stat .v { font-size:18px; font-weight:700; margin-top:2px; }
   .pos { color:#16a34a; } .neg { color:#ef4444; }
-  .cal-wrap { padding:4px 0 8px; }
-  .gh-sq { transition:transform .1s, box-shadow .1s; }
-  .gh-sq:hover { transform:scale(1.5); box-shadow:0 2px 6px rgba(0,0,0,.2); z-index:10; }
+  .sq { transition:transform .1s, box-shadow .1s; }
+  .sq:hover { transform:scale(1.45); box-shadow:0 2px 6px rgba(0,0,0,.2); z-index:10; }
   #day-detail { display:none; margin-top:20px; padding-top:16px; border-top:2px solid #e5e7eb; }
-  .trig { border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px; margin-bottom:8px; background:#fff; cursor:pointer; }
-  .trig:hover { border-color:#93c5fd; }
-  .trig.open { border-color:#2563eb; background:#f8fbff; }
-  .badge { font-size:11px; padding:2px 10px; border-radius:12px; color:#fff; }
+  .trig { border:1px solid #e5e7eb; border-radius:8px; padding:12px 14px; margin-bottom:8px; background:#fff; cursor:pointer; }
+  .trig:hover { border-color:#86efac; }
+  .trig.active { border-color:#16a34a; background:#f0fdf4; }
   .muted { color:#64748b; font-size:12px; }
-  .rule-pane { margin-top:12px; padding:12px 14px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; display:none; }
-  a.charts { display:inline-block; margin-top:10px; font-size:13px; color:#2563eb; }
+  #chart-panel { display:none; margin-top:16px; }
+  #chart { height:460px; border-radius:10px; overflow:hidden; background:#1a2332; }
+  .toggles { display:flex; flex-wrap:wrap; gap:12px; margin:10px 0; font-size:12px; color:#475569; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>Trading Rules Lab</h1>
   <p class="sub" id="sub">Loading…</p>
-
   <div class="perf" id="perf"></div>
 
-  <div class="cal-wrap">
-    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:14px" id="legend"></div>
-    <div id="calendar"></div>
-    <div id="day-detail"></div>
+  <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:14px" id="legend"></div>
+  <div id="calendar"></div>
+  <div id="day-detail"></div>
+  <div id="chart-panel">
+    <div class="toggles">
+      <label><input type="checkbox" data-ma="sma50" checked> SMA50</label>
+      <label><input type="checkbox" data-ma="sma150" checked> SMA150</label>
+      <label><input type="checkbox" data-ma="sma200" checked> SMA200</label>
+      <label><input type="checkbox" data-ma="ema21"> EMA21</label>
+      <label><input type="checkbox" data-ma="ema9" checked> EMA9 (trail)</label>
+      <label><input type="checkbox" id="focusEntry" checked> Zoom near entry</label>
+    </div>
+    <div id="chart"></div>
   </div>
 </div>
 
 <script>
-const STATUS_COLOR = {
-  full: "#22c55e",
-  partial: "#f59e0b",
-  missed: "#ef4444",
-  weekend: "#e2e8f0",
-  today: "#bfdbfe",
-  pre_start: "#f1f5f9",
-  future: "#f1f5f9",
-};
-const STATUS_LABEL = {
-  full: "Full run — trigger(s) fired",
-  partial: "Partial run — scan day, no new trigger",
-  missed: "Missed — trading day gap",
-  weekend: "Weekend / holiday",
-  pre_start: "Before window",
-  future: "Future",
+const COLOR = { trigger: "#22c55e", idle: "#e2e8f0" };
+const MA_STYLE = {
+  sma50:  { name: "SMA50",  color: "#f5a623", width: 1.2 },
+  sma150: { name: "SMA150", color: "#a78bfa", width: 1.2 },
+  sma200: { name: "SMA200", color: "#60a5fa", width: 1.2 },
+  ema21:  { name: "EMA21",  color: "#94a3b8", width: 1.0 },
+  ema9:   { name: "EMA9",   color: "#f472b6", width: 1.4 },
 };
 
 let DATA = null;
+let activeTrig = null;
 
 function fmt$(v) {
   if (v == null) return "—";
@@ -71,7 +71,6 @@ function fmt$(v) {
   return (v >= 0 ? "+$" : "-$") + s;
 }
 function cls(v) { return v >= 0 ? "pos" : "neg"; }
-
 function monthAbbr(m) {
   return ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][m-1];
 }
@@ -81,11 +80,10 @@ function buildPerf() {
   const stake = DATA.performance.stake_per_trigger;
   let rulesHtml = "";
   for (const [rid, r] of Object.entries(DATA.performance.by_rule)) {
-    const meta = DATA.rules[rid] || {};
     rulesHtml += `
       <div class="card">
-        <h3>Rule · ${meta.title || rid}</h3>
-        <p class="muted" style="margin:0 0 10px">${meta.blurb || r.blurb || ""}</p>
+        <h3>Rule · ${r.title || rid}</h3>
+        <p class="muted" style="margin:0 0 10px">${r.blurb || ""}</p>
         <div class="stats">
           <div class="stat"><div class="k">Realized</div><div class="v ${cls(r.realized_pnl)}">${fmt$(r.realized_pnl)}</div></div>
           <div class="stat"><div class="k">Unrealized</div><div class="v ${cls(r.unrealized_pnl)}">${fmt$(r.unrealized_pnl)}</div></div>
@@ -96,7 +94,7 @@ function buildPerf() {
   document.getElementById("perf").innerHTML = `
     <div class="card">
       <h3>Overall paper P&amp;L</h3>
-      <p class="muted" style="margin:0 0 10px">Each trigger = $${stake.toLocaleString()} notional · independent paper tickets</p>
+      <p class="muted" style="margin:0 0 10px">Each trigger = $${stake.toLocaleString()} notional</p>
       <div class="stats">
         <div class="stat"><div class="k">Realized</div><div class="v ${cls(o.realized_pnl)}">${fmt$(o.realized_pnl)}</div></div>
         <div class="stat"><div class="k">Unrealized</div><div class="v ${cls(o.unrealized_pnl)}">${fmt$(o.unrealized_pnl)}</div></div>
@@ -108,24 +106,17 @@ function buildPerf() {
 }
 
 function buildLegend() {
-  const items = [
-    ["full", "Full run"],
-    ["partial", "Partial run"],
-    ["missed", "Missed"],
-    ["weekend", "Weekend"],
-  ];
-  document.getElementById("legend").innerHTML =
-    items.map(([k, label]) =>
-      `<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#64748b;margin-right:12px">
-        <span style="width:10px;height:10px;border-radius:2px;background:${STATUS_COLOR[k]};display:inline-block"></span>${label}</span>`
-    ).join("") +
-    `<span style="font-size:11px;color:#94a3b8;margin-left:4px">· Click any square to inspect</span>`;
+  document.getElementById("legend").innerHTML = `
+    <span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#64748b;margin-right:12px">
+      <span style="width:10px;height:10px;border-radius:2px;background:${COLOR.trigger};display:inline-block"></span>Rule triggered</span>
+    <span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#64748b;margin-right:12px">
+      <span style="width:10px;height:10px;border-radius:2px;background:${COLOR.idle};display:inline-block"></span>No trigger</span>
+    <span style="font-size:11px;color:#94a3b8">· Click green → tickers · click ticker → K-line</span>`;
 }
 
 function buildCalendar() {
   const days = DATA.days;
   const keys = Object.keys(days).sort();
-  if (!keys.length) return;
   const start = new Date(keys[0] + "T12:00:00");
   const end = new Date(keys[keys.length - 1] + "T12:00:00");
   const months = [];
@@ -136,13 +127,12 @@ function buildCalendar() {
     m++; if (m > 12) { m = 1; y++; }
   }
 
-  let colHeader = '<div style="display:flex;margin-left:36px;gap:2px;margin-bottom:4px">';
+  let html = '<div style="display:flex;margin-left:36px;gap:2px;margin-bottom:4px">';
   for (let d = 1; d <= 31; d++) {
-    colHeader += `<div style="width:14px;text-align:center;font-size:8px;color:#94a3b8;flex-shrink:0">${d}</div>`;
+    html += `<div style="width:14px;text-align:center;font-size:8px;color:#94a3b8;flex-shrink:0">${d}</div>`;
   }
-  colHeader += "</div>";
+  html += "</div>";
 
-  let rows = "";
   for (const [yr, mo] of months) {
     const dim = new Date(yr, mo, 0).getDate();
     let cells = "";
@@ -154,110 +144,184 @@ function buildCalendar() {
       const ds = `${yr}-${String(mo).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
       const dd = days[ds];
       if (!dd) {
-        cells += `<div style="width:14px;height:14px;border-radius:2px;background:#f1f5f9;flex-shrink:0" title="${ds}"></div>`;
+        cells += `<div style="width:14px;height:14px;border-radius:2px;background:${COLOR.idle};flex-shrink:0"></div>`;
         continue;
       }
-      const bg = STATUS_COLOR[dd.status] || "#f1f5f9";
-      const tip = `${dd.full_date} (${dd.weekday}) — ${STATUS_LABEL[dd.status] || dd.status}` +
-        (dd.n_triggers ? ` · ${dd.n_triggers} trigger(s)` : "");
-      const dot = dd.n_triggers
-        ? '<span style="position:absolute;top:1px;right:1px;width:4px;height:4px;border-radius:50%;background:rgba(255,255,255,.9)"></span>'
-        : "";
-      const clickable = !["weekend", "future", "pre_start"].includes(dd.status);
-      if (clickable) {
-        cells += `<div id="sq-${ds}" class="gh-sq" style="width:14px;height:14px;border-radius:2px;background:${bg};cursor:pointer;position:relative;flex-shrink:0" onclick="showDay('${ds}')" title="${tip}">${dot}</div>`;
+      const bg = COLOR[dd.status] || COLOR.idle;
+      const tip = `${dd.full_date} — ${dd.n_triggers ? dd.n_triggers + " trigger(s)" : "no trigger"}`;
+      if (dd.status === "trigger") {
+        cells += `<div id="sq-${ds}" class="sq" style="width:14px;height:14px;border-radius:2px;background:${bg};cursor:pointer;flex-shrink:0" onclick="showDay('${ds}')" title="${tip}"></div>`;
       } else {
-        cells += `<div style="width:14px;height:14px;border-radius:2px;background:${bg};position:relative;flex-shrink:0" title="${tip}">${dot}</div>`;
+        cells += `<div style="width:14px;height:14px;border-radius:2px;background:${bg};flex-shrink:0" title="${tip}"></div>`;
       }
     }
-    rows += `<div style="display:flex;align-items:center;gap:0;margin-bottom:3px">
+    html += `<div style="display:flex;align-items:center;margin-bottom:3px">
       <div style="width:34px;font-size:10px;font-weight:600;color:#64748b;flex-shrink:0;text-align:right;padding-right:4px">${monthAbbr(mo)}</div>
       <div style="display:flex;gap:2px">${cells}</div></div>`;
   }
-  document.getElementById("calendar").innerHTML = colHeader + rows;
+  document.getElementById("calendar").innerHTML = html;
 }
 
 function showDay(ds) {
   const d = DATA.days[ds];
-  if (!d) return;
-  document.querySelectorAll(".gh-sq").forEach(el => el.style.outline = "");
+  if (!d || d.status !== "trigger") return;
+  document.querySelectorAll(".sq").forEach(el => el.style.outline = "");
   const sq = document.getElementById("sq-" + ds);
   if (sq) sq.style.outline = "2px solid #2563eb";
 
-  const BADGE = {
-    full: ["#16a34a", "Full Run"],
-    partial: ["#d97706", "Partial Run"],
-    missed: ["#dc2626", "Missed"],
-  };
-  const [bc, bl] = BADGE[d.status] || ["#64748b", d.status];
-  const badge = `<span class="badge" style="background:${bc}">${bl}</span>`;
+  document.getElementById("chart-panel").style.display = "none";
+  activeTrig = null;
 
-  let trigHtml = "";
-  if (d.trigger_ids.length) {
-    trigHtml = `<div style="margin-top:14px">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#64748b;margin-bottom:8px">
-        Triggers that day · $${DATA.performance.stake_per_trigger} each</div>`;
-    for (const id of d.trigger_ids) {
-      const t = DATA.triggers[id];
-      if (!t) continue;
-      const rule = DATA.rules[t.rule] || {};
-      trigHtml += `
-        <div class="trig" id="trig-${id}" onclick="showTrigger('${id.replace(/'/g,"\\'")}')">
-          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px">
-            <span style="font-weight:700">${t.ticker}</span>
-            <span class="muted">${t.kind} · ${t.rule}</span>
-            <span class="muted">entry $${t.entry} → ${t.status === "realized" ? ("exit $" + t.mark) : ("mark $" + t.mark)}</span>
-            <span class="${cls(t.pnl)}" style="font-weight:700;font-size:13px">${fmt$(t.pnl)}</span>
-            <span class="muted">${t.status}${t.reason ? " · " + t.reason : ""}</span>
-          </div>
-          <div class="rule-pane" id="pane-${id}">
-            <div style="font-weight:700;margin-bottom:4px">${rule.title || t.rule}</div>
-            <div class="muted" style="margin-bottom:8px">${rule.blurb || ""}</div>
-            <div class="muted">Paper: $${t.stake} → ${t.shares} sh @ $${t.entry}
-              · ROI ${(t.roi*100).toFixed(1)}% · R ${t.R ?? "—"}</div>
-            ${t.why && t.why.pivot ? `<div class="muted" style="margin-top:6px">Why: ${t.kind} breakout · pivot $${t.why.pivot} · stop $${t.why.stop} · base ${t.why.base_days}d / ${(t.why.base_range*100).toFixed(1)}%</div>` : ""}
-          </div>
-        </div>`;
-    }
-    trigHtml += "</div>";
-  } else {
-    trigHtml = `<p class="muted" style="margin-top:14px">No new triggers this day. Overall / rule P&amp;L still accrue on open tickets.</p>`;
+  let rows = "";
+  for (const id of d.trigger_ids) {
+    const t = DATA.triggers[id];
+    if (!t) continue;
+    rows += `
+      <div class="trig" id="trig-${id}" onclick="showTicker('${id}')">
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px">
+          <span style="font-weight:800;font-size:16px">${t.ticker}</span>
+          <span class="muted">triggered by <b>${t.rule_title || t.rule}</b> · ${t.kind}</span>
+          <span class="${cls(t.pnl)}" style="font-weight:700;margin-left:auto">${fmt$(t.pnl)}</span>
+          <span class="muted">${t.status}${t.reason ? " · " + t.reason : ""}</span>
+        </div>
+        <div class="muted" style="margin-top:4px">$${t.stake} paper · ${t.shares} sh @ $${t.entry} on ${t.entry_date}</div>
+      </div>`;
   }
 
   const el = document.getElementById("day-detail");
   el.style.display = "block";
   el.innerHTML = `
-    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:8px">
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:6px">
       <div style="font-size:18px;font-weight:700">${d.full_date}</div>
       <div class="muted">${d.weekday}</div>
-      ${badge}
+      <span style="font-size:11px;padding:2px 10px;border-radius:12px;color:#fff;background:#16a34a">${d.n_triggers} trigger(s)</span>
     </div>
-    <div class="muted">${STATUS_LABEL[d.status] || ""}</div>
-    ${d.n_triggers ? `<div style="margin-top:10px;display:flex;gap:16px">
-      <div><span class="muted">Day realized</span> <b class="${cls(d.day_realized_pnl)}">${fmt$(d.day_realized_pnl)}</b></div>
-      <div><span class="muted">Day unrealized</span> <b class="${cls(d.day_unrealized_pnl)}">${fmt$(d.day_unrealized_pnl)}</b></div>
-      <div><span class="muted">Day total</span> <b class="${cls(d.day_total_pnl)}">${fmt$(d.day_total_pnl)}</b></div>
-    </div>` : ""}
-    ${trigHtml}
-    <a class="charts" href="${DATA.charts_url}" target="_blank" rel="noopener">Open full K-line trade charts →</a>`;
+    <p class="muted" style="margin:0 0 12px">Click a ticker to open its K-line here</p>
+    ${rows}`;
   el.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
-function showTrigger(id) {
-  document.querySelectorAll(".trig").forEach(el => el.classList.remove("open"));
-  document.querySelectorAll(".rule-pane").forEach(el => el.style.display = "none");
+function showTicker(id) {
+  const t = DATA.triggers[id];
+  const ch = DATA.charts[id];
+  if (!t) return;
+  activeTrig = id;
+  document.querySelectorAll(".trig").forEach(el => el.classList.remove("active"));
   const card = document.getElementById("trig-" + id);
-  const pane = document.getElementById("pane-" + id);
-  if (card) card.classList.add("open");
-  if (pane) pane.style.display = "block";
+  if (card) card.classList.add("active");
+
+  const panel = document.getElementById("chart-panel");
+  panel.style.display = "block";
+  drawChart(t, ch);
+  panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
+
+function visibleMAs() {
+  return [...document.querySelectorAll('.toggles input[data-ma]:checked')].map(x => x.dataset.ma);
+}
+
+function drawChart(r, ch) {
+  if (!ch) {
+    document.getElementById("chart").innerHTML = '<div style="color:#94a3b8;padding:40px;text-align:center">No OHLC for this ticker</div>';
+    return;
+  }
+  const traces = [{
+    type: "candlestick",
+    x: ch.dates, open: ch.open, high: ch.high, low: ch.low, close: ch.close,
+    name: r.ticker,
+    increasing: { line: { color: "#3dd68c" }, fillcolor: "#3dd68c" },
+    decreasing: { line: { color: "#f07178" }, fillcolor: "#f07178" },
+  }];
+  for (const key of visibleMAs()) {
+    const st = MA_STYLE[key];
+    if (!ch[key]) continue;
+    traces.push({
+      type: "scatter", mode: "lines", x: ch.dates, y: ch[key],
+      name: st.name, line: { color: st.color, width: st.width }, hoverinfo: "x+y+name",
+    });
+  }
+  const why = ch.why || r.why || {};
+  const shapes = [{
+    type: "line", x0: r.entry_date, x1: r.entry_date, y0: 0, y1: 1, yref: "paper",
+    line: { color: "#5b9fd4", width: 1.5, dash: "dot" },
+  }];
+  const annotations = [{
+    x: r.entry_date, y: r.entry, ax: 0, ay: -36,
+    text: `BUY $${r.entry.toFixed(2)}`, showarrow: true, arrowhead: 2,
+    bgcolor: "#5b9fd4", font: { color: "#0f1419", size: 11 }, borderpad: 3,
+  }];
+  if (why.pivot != null) {
+    shapes.push({
+      type: "line", x0: ch.dates[0], x1: ch.dates[ch.dates.length - 1],
+      y0: why.pivot, y1: why.pivot,
+      line: { color: "#5b9fd4", width: 1, dash: "dash" }, opacity: 0.7,
+    });
+  }
+  if (why.stop != null) {
+    const i = ch.dates.indexOf(r.entry_date);
+    shapes.push({
+      type: "line",
+      x0: ch.dates[Math.max(0, i - 5)],
+      x1: r.exit_date || ch.dates[ch.dates.length - 1],
+      y0: why.stop, y1: why.stop,
+      line: { color: "#f07178", width: 1, dash: "dash" }, opacity: 0.8,
+    });
+  }
+
+  const sellX = [], sellY = [], sellText = [];
+  (r.fills || []).forEach(f => {
+    const d = f.date || ch.dates[ch.dates.length - 1];
+    sellX.push(d); sellY.push(f.price);
+    sellText.push(`SELL @$${f.price.toFixed(2)}<br>${f.reason}`);
+    shapes.push({
+      type: "line", x0: d, x1: d, y0: 0, y1: 1, yref: "paper",
+      line: { color: f.pnl >= 0 ? "#3dd68c" : "#f07178", width: 1, dash: "dot" },
+    });
+  });
+  traces.push({
+    type: "scatter", mode: "markers", x: [r.entry_date], y: [r.entry],
+    marker: { symbol: "triangle-up", size: 14, color: "#5b9fd4", line: { width: 1, color: "#fff" } },
+    name: "Buy", text: [`BUY $${r.entry.toFixed(2)}`], hoverinfo: "text",
+  });
+  if (sellX.length) {
+    traces.push({
+      type: "scatter", mode: "markers", x: sellX, y: sellY,
+      marker: { symbol: "triangle-down", size: 14, color: "#f5a623", line: { width: 1, color: "#fff" } },
+      name: "Sell", text: sellText, hoverinfo: "text",
+    });
+  }
+
+  let range;
+  if (document.getElementById("focusEntry").checked) {
+    const i = ch.dates.indexOf(r.entry_date);
+    const iExit = r.exit_date && ch.dates.indexOf(r.exit_date) >= 0 ? ch.dates.indexOf(r.exit_date) : i;
+    const i0 = Math.max(0, i - 80);
+    const i1 = Math.min(ch.dates.length - 1, iExit + 25);
+    range = [ch.dates[i0], ch.dates[i1]];
+  }
+
+  Plotly.newPlot("chart", traces, {
+    paper_bgcolor: "#1a2332", plot_bgcolor: "#1a2332",
+    margin: { l: 50, r: 20, t: 30, b: 40 },
+    xaxis: { rangeslider: { visible: false }, gridcolor: "#2a3548", color: "#8b9bb4", range },
+    yaxis: { gridcolor: "#2a3548", color: "#8b9bb4", side: "right" },
+    legend: { orientation: "h", y: 1.1, font: { color: "#8b9bb4", size: 11 } },
+    shapes, annotations,
+    font: { color: "#e7ecf3", family: "IBM Plex Sans, sans-serif" },
+  }, { responsive: true, displayModeBar: true, displaylogo: false });
+}
+
+document.querySelector(".toggles").addEventListener("change", () => {
+  if (!activeTrig) return;
+  drawChart(DATA.triggers[activeTrig], DATA.charts[activeTrig]);
+});
 
 fetch("portal_data.json")
   .then(r => r.json())
   .then(data => {
     DATA = data;
     document.getElementById("sub").textContent =
-      `Paper book · $${data.performance.stake_per_trigger}/trigger · window ${data.window.start} → ${data.window.end} · generated ${data.generated}`;
+      `Paper book · $${data.performance.stake_per_trigger}/trigger · ${data.window.start} → ${data.window.end}`;
     buildPerf();
     buildLegend();
     buildCalendar();
