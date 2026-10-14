@@ -157,18 +157,20 @@ function buildPerf() {
   for (const [rid, r] of Object.entries(DATA.performance.by_rule)) {
     const meta = (DATA.rules && DATA.rules[rid]) || {};
     const logic = r.logic || meta.logic || {};
+    const rr = blockRoi(r);
     const sTotal = shareOfOverall(r.total_pnl, o.total_pnl);
     const sReal = shareOfOverall(r.realized_pnl, o.realized_pnl);
     const sUnreal = shareOfOverall(r.unrealized_pnl, o.unrealized_pnl);
+    const share = (s) => s == null ? "" : ` <span class="muted" style="font-size:12px;font-weight:500">(${fmtPct(s)} of overall)</span>`;
     rulesHtml += `
       <div class="rule-row" id="rule-${rid}" onclick="toggleRule('${rid}')">
         <h4>${r.title || rid} <span class="muted" style="font-weight:500">· click for logic + windows</span></h4>
         <div class="stats">
-          <div class="stat"><div class="k">% of overall total</div><div class="v ${sTotal==null?'':cls(sTotal)}">${sTotal==null?'—':fmtPct(sTotal)}</div></div>
-          <div class="stat"><div class="k">% of overall realized</div><div class="v ${sReal==null?'':cls(sReal)}">${sReal==null?'—':fmtPct(sReal)}</div></div>
-          <div class="stat"><div class="k">% of overall unrealized</div><div class="v ${sUnreal==null?'':cls(sUnreal)}">${sUnreal==null?'—':fmtPct(sUnreal)}</div></div>
+          <div class="stat"><div class="k">Total gain/loss</div><div class="v ${cls(rr.total)}">${fmtPct(rr.total)}${share(sTotal)}</div></div>
+          <div class="stat"><div class="k">Realized gain/loss</div><div class="v ${cls(rr.realized)}">${fmtPct(rr.realized)}${share(sReal)}</div></div>
+          <div class="stat"><div class="k">Unrealized gain/loss</div><div class="v ${cls(rr.unrealized)}">${fmtPct(rr.unrealized)}${share(sUnreal)}</div></div>
         </div>
-        <div class="muted" style="margin-top:6px">Rolling 12m · ${r.n_triggers} triggers · Closed ${r.n_realized} · Open ${r.n_unrealized}</div>
+        <div class="muted" style="margin-top:6px">Rolling 12m · ${r.n_triggers} triggers · Closed ${r.n_realized} · Open ${r.n_unrealized} · (%) = rule return · (of overall) = $ share of overall bucket</div>
         <div class="rule-logic">
           ${glossaryHtml(logic.glossary)}
           <div class="logic-block"><div class="lbl">股票池 / Universe</div><div class="txt">${nl(logic.universe)}</div></div>
@@ -201,7 +203,7 @@ function buildPerf() {
     </div>
     <div class="card">
       <h3>Rules</h3>
-      <p class="muted" style="margin:0 0 4px">Share of rolling-12m overall · click for logic + window metrics / SPY alpha</p>
+      <p class="muted" style="margin:0 0 4px">Same 3 metrics as Overall · parentheses = this rule’s $ share of overall · click for logic + windows</p>
       ${rulesHtml || '<p class="muted">No rules yet</p>'}
     </div>`;
 }
