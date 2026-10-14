@@ -26,8 +26,10 @@
   .trig.active { border-color:#16a34a; background:#f0fdf4; }
   .muted { color:#64748b; font-size:12px; }
   #chart-panel { display:none; margin-top:16px; }
+  #chart-caption { font-size:13px; color:#475569; margin-bottom:8px; }
   #chart { height:460px; border-radius:10px; overflow:hidden; background:#1a2332; }
   .toggles { display:flex; flex-wrap:wrap; gap:12px; margin:10px 0; font-size:12px; color:#475569; }
+  .pill { display:inline-block; font-size:11px; padding:2px 8px; border-radius:999px; background:#e2e8f0; color:#334155; margin-right:6px; }
 </style>
 </head>
 <body>
@@ -40,13 +42,13 @@
   <div id="calendar"></div>
   <div id="day-detail"></div>
   <div id="chart-panel">
+    <div id="chart-caption"></div>
     <div class="toggles">
       <label><input type="checkbox" data-ma="sma50" checked> SMA50</label>
       <label><input type="checkbox" data-ma="sma150" checked> SMA150</label>
       <label><input type="checkbox" data-ma="sma200" checked> SMA200</label>
       <label><input type="checkbox" data-ma="ema21"> EMA21</label>
       <label><input type="checkbox" data-ma="ema9" checked> EMA9 (trail)</label>
-      <label><input type="checkbox" id="focusEntry" checked> Zoom near entry</label>
     </div>
     <div id="chart"></div>
   </div>
@@ -94,13 +96,13 @@ function buildPerf() {
   document.getElementById("perf").innerHTML = `
     <div class="card">
       <h3>Overall paper P&amp;L</h3>
-      <p class="muted" style="margin:0 0 10px">Each trigger = $${stake.toLocaleString()} notional</p>
+      <p class="muted" style="margin:0 0 10px">Each trigger = $${stake.toLocaleString()} · actively marked daily</p>
       <div class="stats">
-        <div class="stat"><div class="k">Realized</div><div class="v ${cls(o.realized_pnl)}">${fmt$(o.realized_pnl)}</div></div>
-        <div class="stat"><div class="k">Unrealized</div><div class="v ${cls(o.unrealized_pnl)}">${fmt$(o.unrealized_pnl)}</div></div>
+        <div class="stat"><div class="k">Realized gain/loss</div><div class="v ${cls(o.realized_pnl)}">${fmt$(o.realized_pnl)}</div></div>
+        <div class="stat"><div class="k">Unrealized gain/loss</div><div class="v ${cls(o.unrealized_pnl)}">${fmt$(o.unrealized_pnl)}</div></div>
         <div class="stat"><div class="k">Total · ${o.n_triggers} triggers</div><div class="v ${cls(o.total_pnl)}">${fmt$(o.total_pnl)}</div></div>
       </div>
-      <div class="muted" style="margin-top:8px">Closed ${o.n_realized} · Open ${o.n_unrealized} · Wins ${o.win_n} / Losses ${o.loss_n}</div>
+      <div class="muted" style="margin-top:8px">Closed ${o.n_realized} · Still open ${o.n_unrealized} · Wins ${o.win_n} / Losses ${o.loss_n}</div>
     </div>
     ${rulesHtml}`;
 }
@@ -111,7 +113,7 @@ function buildLegend() {
       <span style="width:10px;height:10px;border-radius:2px;background:${COLOR.trigger};display:inline-block"></span>Rule triggered</span>
     <span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#64748b;margin-right:12px">
       <span style="width:10px;height:10px;border-radius:2px;background:${COLOR.idle};display:inline-block"></span>No trigger</span>
-    <span style="font-size:11px;color:#94a3b8">· Click green → tickers · click ticker → K-line</span>`;
+    <span style="font-size:11px;color:#94a3b8">· Click green → tickers · click ticker → why-buy K-line</span>`;
 }
 
 function buildCalendar() {
@@ -168,7 +170,6 @@ function showDay(ds) {
   document.querySelectorAll(".sq").forEach(el => el.style.outline = "");
   const sq = document.getElementById("sq-" + ds);
   if (sq) sq.style.outline = "2px solid #2563eb";
-
   document.getElementById("chart-panel").style.display = "none";
   activeTrig = null;
 
@@ -176,15 +177,22 @@ function showDay(ds) {
   for (const id of d.trigger_ids) {
     const t = DATA.triggers[id];
     if (!t) continue;
+    const rp = t.realized_pnl ?? (t.status === "realized" ? t.pnl : 0);
+    const up = t.unrealized_pnl ?? (t.status === "unrealized" ? t.pnl : 0);
     rows += `
       <div class="trig" id="trig-${id}" onclick="showTicker('${id}')">
         <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px">
           <span style="font-weight:800;font-size:16px">${t.ticker}</span>
-          <span class="muted">triggered by <b>${t.rule_title || t.rule}</b> · ${t.kind}</span>
-          <span class="${cls(t.pnl)}" style="font-weight:700;margin-left:auto">${fmt$(t.pnl)}</span>
-          <span class="muted">${t.status}${t.reason ? " · " + t.reason : ""}</span>
+          <span class="pill">${t.status === "realized" ? "closed" : "open · managing"}</span>
+          <span class="muted">rule <b>${t.rule_title || t.rule}</b> · ${t.kind}</span>
+          <span class="muted" style="margin-left:auto"></span>
         </div>
-        <div class="muted" style="margin-top:4px">$${t.stake} paper · ${t.shares} sh @ $${t.entry} on ${t.entry_date}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;font-size:13px">
+          <div>Realized <b class="${cls(rp)}">${fmt$(rp)}</b></div>
+          <div>Unrealized <b class="${cls(up)}">${fmt$(up)}</b></div>
+          <div>Total <b class="${cls(t.pnl)}">${fmt$(t.pnl)}</b></div>
+        </div>
+        <div class="muted" style="margin-top:4px">$${t.stake} paper · ${t.init_sh || t.shares} sh @ $${t.entry} on ${t.entry_date}${t.reason ? " · " + t.reason : ""}</div>
       </div>`;
   }
 
@@ -196,7 +204,7 @@ function showDay(ds) {
       <div class="muted">${d.weekday}</div>
       <span style="font-size:11px;padding:2px 10px;border-radius:12px;color:#fff;background:#16a34a">${d.n_triggers} trigger(s)</span>
     </div>
-    <p class="muted" style="margin:0 0 12px">Click a ticker to open its K-line here</p>
+    <p class="muted" style="margin:0 0 12px">Click a ticker → K-line of the buy + the setup before it</p>
     ${rows}`;
   el.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
@@ -210,6 +218,14 @@ function showTicker(id) {
   const card = document.getElementById("trig-" + id);
   if (card) card.classList.add("active");
 
+  const rp = t.realized_pnl ?? (t.status === "realized" ? t.pnl : 0);
+  const up = t.unrealized_pnl ?? (t.status === "unrealized" ? t.pnl : 0);
+  document.getElementById("chart-caption").innerHTML =
+    `<b>${t.ticker}</b> · why-buy window (setup before entry + buy)`
+    + ` · Realized <span class="${cls(rp)}">${fmt$(rp)}</span>`
+    + ` · Unrealized <span class="${cls(up)}">${fmt$(up)}</span>`
+    + (t.status === "unrealized" ? ` · mark $${t.mark}` : ` · exited ${t.exit_date || ""}`);
+
   const panel = document.getElementById("chart-panel");
   panel.style.display = "block";
   drawChart(t, ch);
@@ -218,6 +234,30 @@ function showTicker(id) {
 
 function visibleMAs() {
   return [...document.querySelectorAll('.toggles input[data-ma]:checked')].map(x => x.dataset.ma);
+}
+
+function whyBuyRange(r, ch) {
+  const lookback = (DATA.chart_defaults && DATA.chart_defaults.lookback) || 90;
+  const postOpen = (DATA.chart_defaults && DATA.chart_defaults.post_entry_open) || 5;
+  const postExit = (DATA.chart_defaults && DATA.chart_defaults.post_exit) || 3;
+  const i = ch.dates.indexOf(r.entry_date);
+  if (i < 0) return undefined;
+  const i0 = Math.max(0, i - lookback);
+  let i1;
+  if (r.exit_date && ch.dates.indexOf(r.exit_date) >= 0) {
+    // Still show sell, but keep the frame anchored on the setup → buy → exit
+    i1 = Math.min(ch.dates.length - 1, ch.dates.indexOf(r.exit_date) + postExit);
+  } else {
+    // Open ticket: buy + a few sessions after (active management continues daily)
+    i1 = Math.min(ch.dates.length - 1, i + postOpen);
+  }
+  // If exit is far after entry, prefer setup+buy focus: cap post-entry stretch
+  // but never hide the sell marker day
+  if (r.exit_date && ch.dates.indexOf(r.exit_date) >= 0) {
+    const iExit = ch.dates.indexOf(r.exit_date);
+    i1 = Math.min(ch.dates.length - 1, Math.max(i + postOpen, iExit + postExit));
+  }
+  return [ch.dates[i0], ch.dates[i1]];
 }
 
 function drawChart(r, ch) {
@@ -247,14 +287,19 @@ function drawChart(r, ch) {
   }];
   const annotations = [{
     x: r.entry_date, y: r.entry, ax: 0, ay: -36,
-    text: `BUY $${r.entry.toFixed(2)}`, showarrow: true, arrowhead: 2,
+    text: `BUY $${Number(r.entry).toFixed(2)}`, showarrow: true, arrowhead: 2,
     bgcolor: "#5b9fd4", font: { color: "#0f1419", size: 11 }, borderpad: 3,
   }];
   if (why.pivot != null) {
+    const range = whyBuyRange(r, ch) || [ch.dates[0], ch.dates[ch.dates.length - 1]];
     shapes.push({
-      type: "line", x0: ch.dates[0], x1: ch.dates[ch.dates.length - 1],
+      type: "line", x0: range[0], x1: range[1],
       y0: why.pivot, y1: why.pivot,
       line: { color: "#5b9fd4", width: 1, dash: "dash" }, opacity: 0.7,
+    });
+    annotations.push({
+      x: r.entry_date, y: why.pivot, ax: 50, ay: 18, showarrow: false,
+      text: `pivot $${why.pivot}`, font: { color: "#5b9fd4", size: 10 },
     });
   }
   if (why.stop != null) {
@@ -262,7 +307,7 @@ function drawChart(r, ch) {
     shapes.push({
       type: "line",
       x0: ch.dates[Math.max(0, i - 5)],
-      x1: r.exit_date || ch.dates[ch.dates.length - 1],
+      x1: r.exit_date || ch.dates[Math.min(ch.dates.length - 1, i + 5)],
       y0: why.stop, y1: why.stop,
       line: { color: "#f07178", width: 1, dash: "dash" }, opacity: 0.8,
     });
@@ -272,16 +317,25 @@ function drawChart(r, ch) {
   (r.fills || []).forEach(f => {
     const d = f.date || ch.dates[ch.dates.length - 1];
     sellX.push(d); sellY.push(f.price);
-    sellText.push(`SELL @$${f.price.toFixed(2)}<br>${f.reason}`);
+    sellText.push(`SELL @$${Number(f.price).toFixed(2)}<br>${f.reason || ""}`);
     shapes.push({
       type: "line", x0: d, x1: d, y0: 0, y1: 1, yref: "paper",
-      line: { color: f.pnl >= 0 ? "#3dd68c" : "#f07178", width: 1, dash: "dot" },
+      line: { color: "#f5a623", width: 1, dash: "dot" },
     });
   });
+  // live mark for open tickets
+  if (r.status === "unrealized" && r.mark != null) {
+    const last = ch.dates[ch.dates.length - 1];
+    traces.push({
+      type: "scatter", mode: "markers", x: [last], y: [r.mark],
+      marker: { symbol: "circle", size: 10, color: "#38bdf8", line: { width: 1, color: "#fff" } },
+      name: "Mark", text: [`MARK $${Number(r.mark).toFixed(2)}`], hoverinfo: "text",
+    });
+  }
   traces.push({
     type: "scatter", mode: "markers", x: [r.entry_date], y: [r.entry],
     marker: { symbol: "triangle-up", size: 14, color: "#5b9fd4", line: { width: 1, color: "#fff" } },
-    name: "Buy", text: [`BUY $${r.entry.toFixed(2)}`], hoverinfo: "text",
+    name: "Buy", text: [`BUY $${Number(r.entry).toFixed(2)}`], hoverinfo: "text",
   });
   if (sellX.length) {
     traces.push({
@@ -291,14 +345,7 @@ function drawChart(r, ch) {
     });
   }
 
-  let range;
-  if (document.getElementById("focusEntry").checked) {
-    const i = ch.dates.indexOf(r.entry_date);
-    const iExit = r.exit_date && ch.dates.indexOf(r.exit_date) >= 0 ? ch.dates.indexOf(r.exit_date) : i;
-    const i0 = Math.max(0, i - 80);
-    const i1 = Math.min(ch.dates.length - 1, iExit + 25);
-    range = [ch.dates[i0], ch.dates[i1]];
-  }
+  const range = whyBuyRange(r, ch);
 
   Plotly.newPlot("chart", traces, {
     paper_bgcolor: "#1a2332", plot_bgcolor: "#1a2332",
@@ -321,7 +368,7 @@ fetch("portal_data.json")
   .then(data => {
     DATA = data;
     document.getElementById("sub").textContent =
-      `Paper book · $${data.performance.stake_per_trigger}/trigger · ${data.window.start} → ${data.window.end}`;
+      `Paper book · $${data.performance.stake_per_trigger}/trigger · as of ${data.asof || data.window.end} · updated ${data.generated}`;
     buildPerf();
     buildLegend();
     buildCalendar();
