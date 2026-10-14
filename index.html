@@ -93,6 +93,11 @@ function blockRoi(block) {
     total: block.total_roi ?? (block.total_pnl || 0) / cap,
   };
 }
+/** Rule's share of overall P&L bucket (0–1+). null if overall bucket ~0. */
+function shareOfOverall(part, whole) {
+  if (whole == null || Math.abs(whole) < 1e-9) return null;
+  return part / whole;
+}
 function monthAbbr(m) {
   return ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][m-1];
 }
@@ -102,18 +107,20 @@ function buildPerf() {
   const or = blockRoi(o);
   let rulesHtml = "";
   for (const [rid, r] of Object.entries(DATA.performance.by_rule)) {
-    const rr = blockRoi(r);
     const meta = (DATA.rules && DATA.rules[rid]) || {};
     const logic = r.logic || meta.logic || {};
+    const sReal = shareOfOverall(r.realized_pnl, o.realized_pnl);
+    const sUnreal = shareOfOverall(r.unrealized_pnl, o.unrealized_pnl);
+    const sTotal = shareOfOverall(r.total_pnl, o.total_pnl);
     rulesHtml += `
       <div class="rule-row" id="rule-${rid}" onclick="toggleRule('${rid}')">
         <h4>${r.title || rid} <span class="muted" style="font-weight:500">· click for logic</span></h4>
         <div class="stats">
-          <div class="stat"><div class="k">Realized</div><div class="v ${cls(rr.realized)}">${fmtPct(rr.realized)}</div></div>
-          <div class="stat"><div class="k">Unrealized</div><div class="v ${cls(rr.unrealized)}">${fmtPct(rr.unrealized)}</div></div>
-          <div class="stat"><div class="k">Total · ${r.n_triggers} triggers</div><div class="v ${cls(rr.total)}">${fmtPct(rr.total)}</div></div>
+          <div class="stat"><div class="k">% of overall realized</div><div class="v ${sReal==null?'':cls(sReal)}">${sReal==null?'—':fmtPct(sReal)}</div></div>
+          <div class="stat"><div class="k">% of overall unrealized</div><div class="v ${sUnreal==null?'':cls(sUnreal)}">${sUnreal==null?'—':fmtPct(sUnreal)}</div></div>
+          <div class="stat"><div class="k">% of overall total</div><div class="v ${sTotal==null?'':cls(sTotal)}">${sTotal==null?'—':fmtPct(sTotal)}</div></div>
         </div>
-        <div class="muted" style="margin-top:6px">Closed ${r.n_realized} · Open ${r.n_unrealized}</div>
+        <div class="muted" style="margin-top:6px">${r.n_triggers} triggers · Closed ${r.n_realized} · Open ${r.n_unrealized}</div>
         <div class="rule-logic">
           <div class="logic-block"><div class="lbl">选股 / Select</div><div class="txt">${logic.select || "—"}</div></div>
           <div class="logic-block"><div class="lbl">买入 / Buy</div><div class="txt">${logic.buy || "—"}</div></div>
@@ -126,17 +133,17 @@ function buildPerf() {
   document.getElementById("perf").innerHTML = `
     <div class="card">
       <h3>Overall paper P&amp;L</h3>
-      <p class="muted" style="margin:0 0 10px">All rules · $1k notional per trigger · rates vs capital deployed</p>
+      <p class="muted" style="margin:0 0 10px">Return on capital deployed (${o.n_triggers} triggers × $1k). Not “number of triggers.”</p>
       <div class="stats">
         <div class="stat"><div class="k">Realized gain/loss</div><div class="v ${cls(or.realized)}">${fmtPct(or.realized)}</div></div>
         <div class="stat"><div class="k">Unrealized gain/loss</div><div class="v ${cls(or.unrealized)}">${fmtPct(or.unrealized)}</div></div>
-        <div class="stat"><div class="k">Total · ${o.n_triggers} triggers</div><div class="v ${cls(or.total)}">${fmtPct(or.total)}</div></div>
+        <div class="stat"><div class="k">Total gain/loss</div><div class="v ${cls(or.total)}">${fmtPct(or.total)}</div></div>
       </div>
       <div class="muted" style="margin-top:8px">Closed ${o.n_realized} · Still open ${o.n_unrealized} · Wins ${o.win_n} / Losses ${o.loss_n}</div>
     </div>
     <div class="card">
       <h3>Rules</h3>
-      <p class="muted" style="margin:0 0 4px">Click a rule → plain-language 选股 / 买入 / 止盈止损</p>
+      <p class="muted" style="margin:0 0 4px">Each rule’s share of overall realized / unrealized / total · click for 选股 / 买入 / 止盈止损</p>
       ${rulesHtml || '<p class="muted">No rules yet</p>'}
     </div>`;
 }
