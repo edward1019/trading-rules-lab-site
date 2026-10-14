@@ -110,6 +110,20 @@ function monthAbbr(m) {
   return ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][m-1];
 }
 
+function nl(s) {
+  if (!s) return "—";
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g, "<br>");
+}
+function glossaryHtml(glossary) {
+  if (!glossary || !glossary.length) return "";
+  const items = glossary.map(g =>
+    `<div style="margin:4px 0"><b>${nl(g.term)}</b> — ${nl(g.def)}</div>`
+  ).join("");
+  return `<div class="logic-block" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 12px">
+    <div class="lbl">术语（只解释一次）</div>
+    <div class="txt">${items}</div>
+  </div>`;
+}
 function periodTableHtml(periods) {
   if (!periods) return '<p class="muted">No period stats yet</p>';
   const labels = (DATA.performance.periods || ["12m", "6m", "3m", "1m"]);
@@ -156,11 +170,12 @@ function buildPerf() {
         </div>
         <div class="muted" style="margin-top:6px">Rolling 12m · ${r.n_triggers} triggers · Closed ${r.n_realized} · Open ${r.n_unrealized}</div>
         <div class="rule-logic">
-          <div class="logic-block"><div class="lbl">选股 / Select</div><div class="txt">${logic.select || "—"}</div></div>
-          <div class="logic-block"><div class="lbl">买入 / Buy</div><div class="txt">${logic.buy || "—"}</div></div>
-          <div class="logic-block"><div class="lbl">止损 / Stop</div><div class="txt">${logic.stop || "—"}</div></div>
-          <div class="logic-block"><div class="lbl">止盈 / Take profit</div><div class="txt">${logic.take_profit || "—"}</div></div>
-          ${logic.universe ? `<div class="logic-block"><div class="lbl">股票池 / Universe</div><div class="txt">${logic.universe}</div></div>` : ""}
+          ${glossaryHtml(logic.glossary)}
+          <div class="logic-block"><div class="lbl">股票池 / Universe</div><div class="txt">${nl(logic.universe)}</div></div>
+          <div class="logic-block"><div class="lbl">选股 / Select</div><div class="txt">${nl(logic.select)}</div></div>
+          <div class="logic-block"><div class="lbl">买入 / Buy</div><div class="txt">${nl(logic.buy)}</div></div>
+          <div class="logic-block"><div class="lbl">止损 / Stop</div><div class="txt">${nl(logic.stop)}</div></div>
+          <div class="logic-block"><div class="lbl">止盈 / Take profit</div><div class="txt">${nl(logic.take_profit)}</div></div>
           <div class="period-panel" style="display:block;border-top:1px solid #dcfce7;margin-top:12px;padding-top:12px">
             <div class="muted" style="margin-bottom:6px">Rolling windows · vs SPY</div>
             ${periodTableHtml(r.periods)}
