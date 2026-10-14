@@ -143,11 +143,11 @@ function periodTableHtml(periods) {
   }
   return `<table class="period-table">
     <thead><tr>
-      <th>Window</th><th>Total</th><th>Realized</th><th>Unrealized</th><th>SPY (matched)</th><th>Alpha</th><th>Triggers</th>
+      <th>Window</th><th>Total (to today)</th><th>Realized</th><th>Unrealized</th><th>SPY buy→today</th><th>Alpha</th><th>Triggers</th>
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>
-  <p class="muted" style="margin-top:8px">Apple-to-apple: each $1k ticket vs $1k SPY over the <b>same hold dates</b> (entry → exit/mark). Alpha = Total − matched SPY. Not calendar buy-&amp;-hold SPY.</p>`;
+  <p class="muted" style="margin-top:8px">Apple-to-apple: each ticket starts $1k. <b>SPY</b> = that $1k in SPY from buy → today. <b>Total</b> = stock while held, then sale proceeds stay in SPY until today. New $1k entries each get their own SPY leg from that buy date. Alpha = Total − SPY. Realized/Unrealized stay stock-only marks.</p>`;
 }
 
 function buildPerf() {
@@ -191,7 +191,7 @@ function buildPerf() {
   document.getElementById("perf").innerHTML = `
     <div class="card clickable" id="overall-card" onclick="toggleOverall()">
       <h3>Overall paper P&amp;L <span class="muted" style="font-weight:500;text-transform:none;letter-spacing:0">· click for 12m/6m/3m/1m</span></h3>
-      <p class="muted" style="margin:0 0 10px">Rolling 12m (${win.start || "?"} → ${win.end || "?"}) · each trigger = $1k ticket · vs matched SPY on same hold dates</p>
+      <p class="muted" style="margin:0 0 10px">Rolling 12m (${win.start || "?"} → ${win.end || "?"}) · $1k/ticket · Total grows sale proceeds in SPY to today · SPY bench = $1k buy→today</p>
       <div class="stats">
         <div class="stat"><div class="k">Total gain/loss</div><div class="v ${cls(or.total)}">${fmtPct(or.total)}</div></div>
         <div class="stat"><div class="k">Realized gain/loss</div><div class="v ${cls(or.realized)}">${fmtPct(or.realized)}</div></div>
