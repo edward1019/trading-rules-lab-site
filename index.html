@@ -16,9 +16,16 @@
   .stats { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
   .stat .k { font-size:11px; color:#94a3b8; }
   .stat .v { font-size:22px; font-weight:700; margin-top:2px; }
-  .rule-row { border:1px solid #e5e7eb; border-radius:8px; padding:12px 14px; margin-top:10px; background:#fff; }
+  .rule-row { border:1px solid #e5e7eb; border-radius:8px; padding:12px 14px; margin-top:10px; background:#fff; cursor:pointer; }
   .rule-row:first-of-type { margin-top:4px; }
+  .rule-row:hover { border-color:#86efac; }
+  .rule-row.open { border-color:#16a34a; background:#f0fdf4; }
   .rule-row h4 { margin:0 0 6px; font-size:14px; }
+  .rule-logic { display:none; margin-top:12px; padding-top:12px; border-top:1px solid #dcfce7; }
+  .rule-row.open .rule-logic { display:block; }
+  .logic-block { margin-bottom:10px; }
+  .logic-block .lbl { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#15803d; margin-bottom:3px; }
+  .logic-block .txt { font-size:13px; color:#334155; line-height:1.55; }
   .pos { color:#16a34a; } .neg { color:#ef4444; }
   .sq { transition:transform .1s, box-shadow .1s; }
   .sq:hover { transform:scale(1.45); box-shadow:0 2px 6px rgba(0,0,0,.2); z-index:10; }
@@ -96,16 +103,24 @@ function buildPerf() {
   let rulesHtml = "";
   for (const [rid, r] of Object.entries(DATA.performance.by_rule)) {
     const rr = blockRoi(r);
+    const meta = (DATA.rules && DATA.rules[rid]) || {};
+    const logic = r.logic || meta.logic || {};
     rulesHtml += `
-      <div class="rule-row">
-        <h4>${r.title || rid}</h4>
-        <p class="muted" style="margin:0 0 8px">${r.blurb || ""}</p>
+      <div class="rule-row" id="rule-${rid}" onclick="toggleRule('${rid}')">
+        <h4>${r.title || rid} <span class="muted" style="font-weight:500">· click for logic</span></h4>
         <div class="stats">
           <div class="stat"><div class="k">Realized</div><div class="v ${cls(rr.realized)}">${fmtPct(rr.realized)}</div></div>
           <div class="stat"><div class="k">Unrealized</div><div class="v ${cls(rr.unrealized)}">${fmtPct(rr.unrealized)}</div></div>
           <div class="stat"><div class="k">Total · ${r.n_triggers} triggers</div><div class="v ${cls(rr.total)}">${fmtPct(rr.total)}</div></div>
         </div>
         <div class="muted" style="margin-top:6px">Closed ${r.n_realized} · Open ${r.n_unrealized}</div>
+        <div class="rule-logic">
+          <div class="logic-block"><div class="lbl">选股 / Select</div><div class="txt">${logic.select || "—"}</div></div>
+          <div class="logic-block"><div class="lbl">买入 / Buy</div><div class="txt">${logic.buy || "—"}</div></div>
+          <div class="logic-block"><div class="lbl">止损 / Stop</div><div class="txt">${logic.stop || "—"}</div></div>
+          <div class="logic-block"><div class="lbl">止盈 / Take profit</div><div class="txt">${logic.take_profit || "—"}</div></div>
+          ${logic.universe ? `<div class="logic-block"><div class="lbl">股票池 / Universe</div><div class="txt">${logic.universe}</div></div>` : ""}
+        </div>
       </div>`;
   }
   document.getElementById("perf").innerHTML = `
@@ -121,9 +136,17 @@ function buildPerf() {
     </div>
     <div class="card">
       <h3>Rules</h3>
-      <p class="muted" style="margin:0 0 4px">Per-rule realized / unrealized / total %</p>
+      <p class="muted" style="margin:0 0 4px">Click a rule → plain-language 选股 / 买入 / 止盈止损</p>
       ${rulesHtml || '<p class="muted">No rules yet</p>'}
     </div>`;
+}
+
+function toggleRule(rid) {
+  const el = document.getElementById("rule-" + rid);
+  if (!el) return;
+  const opening = !el.classList.contains("open");
+  document.querySelectorAll(".rule-row").forEach(r => r.classList.remove("open"));
+  if (opening) el.classList.add("open");
 }
 
 function buildLegend() {
