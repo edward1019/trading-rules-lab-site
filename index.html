@@ -143,11 +143,11 @@ function periodTableHtml(periods) {
   }
   return `<table class="period-table">
     <thead><tr>
-      <th>Window</th><th>Total</th><th>Realized</th><th>Unrealized</th><th>SPY</th><th>Alpha vs SPY</th><th>Triggers</th>
+      <th>Window</th><th>Total</th><th>Realized</th><th>Unrealized</th><th>SPY (matched)</th><th>Alpha</th><th>Triggers</th>
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>
-  <p class="muted" style="margin-top:8px">Windows by entry date · alpha = total − SPY over the same dates</p>`;
+  <p class="muted" style="margin-top:8px">Apple-to-apple: each $1k ticket vs $1k SPY over the <b>same hold dates</b> (entry → exit/mark). Alpha = Total − matched SPY. Not calendar buy-&amp;-hold SPY.</p>`;
 }
 
 function buildPerf() {
@@ -170,7 +170,9 @@ function buildPerf() {
           <div class="stat"><div class="k">Realized gain/loss</div><div class="v ${cls(rr.realized)}">${fmtPct(rr.realized)}${share(sReal)}</div></div>
           <div class="stat"><div class="k">Unrealized gain/loss</div><div class="v ${cls(rr.unrealized)}">${fmtPct(rr.unrealized)}${share(sUnreal)}</div></div>
         </div>
-        <div class="muted" style="margin-top:6px">Rolling 12m · ${r.n_triggers} triggers · Closed ${r.n_realized} · Open ${r.n_unrealized}</div>
+        <div class="muted" style="margin-top:6px">Rolling 12m · ${r.n_triggers} triggers · Closed ${r.n_realized} · Open ${r.n_unrealized}
+          ${r.spy_matched!=null ? ` · matched SPY <b class="${cls(r.spy_matched)}">${fmtPct(r.spy_matched)}</b>` : ""}
+          ${r.alpha!=null ? ` · alpha <b class="${cls(r.alpha)}">${fmtPct(r.alpha)}</b>` : ""}</div>
         <div class="rule-logic">
           ${glossaryHtml(logic.glossary)}
           <div class="logic-block"><div class="lbl">股票池 / Universe</div><div class="txt">${nl(logic.universe)}</div></div>
@@ -189,14 +191,15 @@ function buildPerf() {
   document.getElementById("perf").innerHTML = `
     <div class="card clickable" id="overall-card" onclick="toggleOverall()">
       <h3>Overall paper P&amp;L <span class="muted" style="font-weight:500;text-transform:none;letter-spacing:0">· click for 12m/6m/3m/1m</span></h3>
-      <p class="muted" style="margin:0 0 10px">Rolling 12 months (${win.start || "?"} → ${win.end || "?"}) · paper model: each trigger = $1k ticket · return = ΣP&amp;L ÷ (${o.n_triggers} × $1k). No idle-cash / SPY-park account — not the $10k backtest book.</p>
+      <p class="muted" style="margin:0 0 10px">Rolling 12m (${win.start || "?"} → ${win.end || "?"}) · each trigger = $1k ticket · vs matched SPY on same hold dates</p>
       <div class="stats">
         <div class="stat"><div class="k">Total gain/loss</div><div class="v ${cls(or.total)}">${fmtPct(or.total)}</div></div>
         <div class="stat"><div class="k">Realized gain/loss</div><div class="v ${cls(or.realized)}">${fmtPct(or.realized)}</div></div>
         <div class="stat"><div class="k">Unrealized gain/loss</div><div class="v ${cls(or.unrealized)}">${fmtPct(or.unrealized)}</div></div>
       </div>
       <div class="muted" style="margin-top:8px">Closed ${o.n_realized} · Still open ${o.n_unrealized} · Wins ${o.win_n} / Losses ${o.loss_n}
-        ${o.periods && o.periods["12m"] && o.periods["12m"].alpha!=null ? ` · 12m alpha vs SPY <b class="${cls(o.periods["12m"].alpha)}">${fmtPct(o.periods["12m"].alpha)}</b>` : ""}</div>
+        ${o.spy_matched!=null ? ` · matched SPY <b class="${cls(o.spy_matched)}">${fmtPct(o.spy_matched)}</b>` : ""}
+        ${o.alpha!=null ? ` · alpha <b class="${cls(o.alpha)}">${fmtPct(o.alpha)}</b>` : ""}</div>
       <div class="period-panel">
         ${periodTableHtml(o.periods)}
       </div>
