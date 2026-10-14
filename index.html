@@ -315,7 +315,7 @@ function showDay(ds) {
           <div>Unrealized <b class="${cls(ur)}">${fmtPct(ur)}</b></div>
           <div>Total <b class="${cls(tr)}">${fmtPct(tr)}</b></div>
         </div>
-        <div class="muted" style="margin-top:4px">$1k paper · entry $${t.entry} on ${t.entry_date}${t.reason ? " · " + t.reason : ""}</div>
+        <div class="muted" style="margin-top:4px">$1k paper · entry $${t.entry} on ${t.entry_date}${t.reason && t.reason !== "open" ? " · " + t.reason : (t.status === "unrealized" ? " · managing" : "")}</div>
       </div>`;
   }
 
@@ -363,24 +363,18 @@ function visibleMAs() {
 
 function whyBuyRange(r, ch) {
   const lookback = (DATA.chart_defaults && DATA.chart_defaults.lookback) || 90;
-  const postOpen = (DATA.chart_defaults && DATA.chart_defaults.post_entry_open) || 5;
   const postExit = (DATA.chart_defaults && DATA.chart_defaults.post_exit) || 15;
   const i = ch.dates.indexOf(r.entry_date);
   if (i < 0) return undefined;
   const i0 = Math.max(0, i - lookback);
   let i1;
   if (r.exit_date && ch.dates.indexOf(r.exit_date) >= 0) {
-    // Still show sell, but keep the frame anchored on the setup → buy → exit
-    i1 = Math.min(ch.dates.length - 1, ch.dates.indexOf(r.exit_date) + postExit);
-  } else {
-    // Open ticket: buy + a few sessions after (active management continues daily)
-    i1 = Math.min(ch.dates.length - 1, i + postOpen);
-  }
-  // If exit is far after entry, prefer setup+buy focus: cap post-entry stretch
-  // but never hide the sell marker day
-  if (r.exit_date && ch.dates.indexOf(r.exit_date) >= 0) {
+    // Closed: setup → exit + post-exit window to judge the sell
     const iExit = ch.dates.indexOf(r.exit_date);
-    i1 = Math.min(ch.dates.length - 1, Math.max(i + postOpen, iExit + postExit));
+    i1 = Math.min(ch.dates.length - 1, iExit + postExit);
+  } else {
+    // Open: setup → latest bar (so mark / management path stays visible)
+    i1 = ch.dates.length - 1;
   }
   return [ch.dates[i0], ch.dates[i1]];
 }
@@ -440,11 +434,13 @@ function drawChart(r, ch) {
 
   const sellX = [], sellY = [], sellText = [];
   (r.fills || []).forEach(f => {
-    const d = f.date || ch.dates[ch.dates.length - 1];
-    sellX.push(d); sellY.push(f.price);
+    const reason = (f.reason || "").trim().toLowerCase();
+    // Skip mark-to-market stubs; only real exits get a Sell marker
+    if (!f.date || !reason || reason === "open") return;
+    sellX.push(f.date); sellY.push(f.price);
     sellText.push(`SELL @$${Number(f.price).toFixed(2)}<br>${f.reason || ""}`);
     shapes.push({
-      type: "line", x0: d, x1: d, y0: 0, y1: 1, yref: "paper",
+      type: "line", x0: f.date, x1: f.date, y0: 0, y1: 1, yref: "paper",
       line: { color: "#f5a623", width: 1, dash: "dot" },
     });
   });
